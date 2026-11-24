@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BudPdf Converter</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .drop { border: 2px dashed #cbd5e1; }
+  .drop.drag { border-color: #2563eb; background: #eff6ff; }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800">
+<header class="bg-slate-950 text-white">
+  <div class="max-w-6xl mx-auto px-5 py-5 flex gap-4 justify-between items-center">
+    <div class="flex items-center gap-3">
+      <img src="https://github.com/Budpostach/BudPDF/raw/main/public/BP_logo.jpg" alt="Budpostach Logo" class="w-10 h-10 rounded-xl object-cover border border-slate-800 shadow">
+      <div>
+        <h1 class="text-2xl font-bold">BudPdf <span class="text-blue-400">Converter</span></h1>
+        <p class="text-slate-300 text-sm" data-i18n="subtitle">Посторінковий поділ · Оптимізація · Налаштування</p>
+      </div>
+    </div>
+    <div class="flex gap-1">
+      <button id="ua" class="px-3 py-1 rounded">UA</button>
+      <button id="en" class="px-3 py-1 rounded">EN</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-5 py-8 grid lg:grid-cols-3 gap-6">
+<section class="lg:col-span-1 space-y-5">
+  <label id="drop" class="drop bg-white rounded-2xl shadow-sm p-8 cursor-pointer block text-center">
+    <input id="input" type="file" accept=".pdf,application/pdf" multiple class="hidden">
+    <div class="text-4xl mb-3">⇧</div>
+    <div class="font-semibold" data-i18n="upload">Оберіть PDF або перетягніть сюди</div>
+    <p class="text-sm text-slate-500 mt-2" data-i18n="local">Обробка локально у браузері. Файли не надсилаються на сервер.</p>
+  </label>
+  
+  <div class="bg-white rounded-2xl shadow-sm p-6 space-y-4">
+    <h2 class="font-bold text-base" data-i18n="settings">Параметри обробки</h2>
+    
+    <div>
+      <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5" data-i18n="sizeLimitLabel">Ліміт розміру сторінки:</label>
+      <select id="size-select" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        <option value="490">До 490 КБ (Суворий ліміт)</option>
+        <option value="1900">До 1.9 МБ (Збільшений ліміт)</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5" data-i18n="colorModeLabel">Колірна схема:</label>
+      <select id="color-select" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        <option value="grayscale">Grayscale (Чорно-білий)</option>
+        <option value="color">Кольоровий (Зберегти колір)</option>
+      </select>
+    </div>
+
+    <dl class="space-y-2 text-xs text-slate-500 pt-2 border-t">
+      <div class="flex justify-between"><dt data-i18n="resolution">Роздільна здатність</dt><dd class="font-medium text-slate-750" data-i18n="resVal">Автопідбір під ліміт</dd></div>
+      <div class="flex justify-between"><dt data-i18n="output">Режим</dt><dd class="font-medium text-slate-750" data-i18n="outputVal">Кожна сторінка — окремий PDF</dd></div>
+    </dl>
+  </div>
+
+  <button id="convert" disabled class="w-full rounded-xl py-3 bg-blue-700 text-white font-semibold hover:bg-blue-800" data-i18n="convert">Розділити та конвертувати</button>
+  <button id="clear" class="w-full rounded-xl py-2 border border-slate-300 bg-white text-sm" data-i18n="clear">Очистити чергу</button>
+</section>
+
+<section class="lg:col-span-2 bg-white rounded-2xl shadow-sm p-6">
+  <div class="flex justify-between flex-wrap gap-3 items-center mb-5">
+    <h2 class="font-bold text-lg" data-i18n="queue">Документи та сторінки</h2>
+    <button id="all" class="hidden rounded-lg bg-slate-900 text-white text-sm px-4 py-2" data-i18n="downloadall">Завантажити все (ZIP)</button>
+  </div>
+  <div id="queueItems" class="space-y-3"><p class="text-slate-400" data-i18n="empty">Черга порожня</p></div>
+</section>
+</main>
+
+<!-- Модальне вікно попереднього перегляду -->
+<div id="previewModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div class="px-5 py-3 border-b flex items-center justify-between gap-3 bg-slate-50">
+      <div class="min-w-0">
+        <h3 id="previewTitle" class="font-bold text-sm truncate"></h3>
+        <p id="previewMeta" class="text-xs text-slate-500"></p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="previewDownload" class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium px-3 py-1.5 rounded-lg" data-i18n="download">Завантажити PDF</button>
+        <button id="previewClose" class="border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-medium px-3 py-1.5 rounded-lg" data-i18n="close">Закрити</button>
+      </div>
+    </div>
+    <div class="p-4 overflow-auto bg-slate-200 flex-1 flex items-center justify-center">
+      <img id="previewImg" src="" alt="Preview" class="max-w-full max-h-[75vh] object-contain bg-white shadow-md border border-slate-300">
+    </div>
+  </div>
+</div>
+
+<footer class="text-center text-slate-500 text-xs py-5">BudPdf Converter · Budpostach</footer>
+
+<script>
+'use strict';
+const PDFJS_ASSETS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/";
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $ = id => document.getElementById(id);
+
+const i18n = {
+  ua: {
+    subtitle: 'Посторінковий поділ · Налаштування розміру та кольору',
+    upload: 'Оберіть PDF або перетягніть сюди',
+    local: 'Обробка локально у браузері. Файли не надсилаються на сервер.',
+    settings: 'Параметри обробки',
+    sizeLimitLabel: 'Ліміт розміру сторінки:',
+    colorModeLabel: 'Колірна схема:',
+    resolution: 'Роздільна здатність',
+    resVal: 'Автопідбір під ліміт',
+    output: 'Режим',
+    outputVal: 'Кожна сторінка — окремий PDF',
+    convert: 'Розділити та конвертувати',
+    clear: 'Очистити чергу',
+    queue: 'Документи та сторінки',
+    downloadall: 'Завантажити все (ZIP)',
+    empty: 'Черга порожня',
+    wait: 'У черзі',
+    working: 'Обробка...',
+    done: 'Готово',
+    download: 'Завантажити PDF',
+    preview: 'Перегляд',
+    close: 'Закрити',
+    error: 'Помилка',
+    cancel: 'Видалити',
+    pages: 'Сторінок',
+    pageShort: 'Стор.',
+    pageProgress: (p, total) => `(сторінка ${p} із ${total})`
+  },
+  en: {
+    subtitle: 'Page splitting · Size & Color settings',
+    upload: 'Choose PDFs or drag and drop here',
+    local: 'Processing locally in browser. Files are never uploaded.',
+    settings: 'Processing Settings',
+    sizeLimitLabel: 'Page size limit:',
+    colorModeLabel: 'Color mode:',
+    resolution: 'Resolution',
+    resVal: 'Auto-fit to limit',
+    output: 'Mode',
+    outputVal: 'Each page — separate PDF',
+    convert: 'Split and Convert',
+    clear: 'Clear queue',
+    queue: 'Documents & Pages',
+    downloadall: 'Download all (ZIP)',
+    empty: 'Queue is empty',
+    wait: 'Queued',
+    working: 'Processing...',
+    done: 'Complete',
+    download: 'Download PDF',
+    preview: 'Preview',
+    close: 'Close',
+    error: 'Error',
+    cancel: 'Remove',
+    pages: 'Pages',
+    pageShort: 'Page',
+    pageProgress: (p, total) => `(page ${p} of ${total})`
+  }
+};
+
+let lang = 'ua', queue = [], busy = false, currentPreview = null;
+const s = k => i18n[lang][k] || k;
+const escaped = x => String(x).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const readable = n => n < 1024 * 1024 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
+const baseName = n => n.replace(/\.pdf$/i, '');
+
+function translate() {
+  document.documentElement.lang = lang === 'ua' ? 'uk' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = s(el.dataset.i18n));
+  ['ua','en'].forEach(l => $(l).className = 'px-3 py-1 rounded text-sm font-medium ' + (lang === l ? 'bg-blue-700 text-white' : 'text-slate-300 hover:bg-slate-800'));
+  render();
+}
+['ua','en'].forEach(l => $(l).addEventListener('click', () => { lang = l; translate(); }));
+
+function revokeOutputs(item) {
+  for (const out of item.outputs) {
+    if (out.previewUrl) URL.revokeObjectURL(out.previewUrl);
+  }
+}
+
+function add(files) {
+  if (busy) return;
+  for (const file of files) {
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      queue.push({ file, status: 'wait', pages: 0, outputs: [], error: '' });
+    }
+  }
+  render();
+}
+$('input').addEventListener('change', e => { add([...e.target.files]); e.target.value = ''; });
+const drop = $('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag'); add([...e.dataTransfer.files]); });
+$('clear').addEventListener('click', () => {
+  if (busy) return;
+  queue.forEach(revokeOutputs);
+  queue = [];
+  render();
+});
+
+function render() {
+  $('convert').disabled = busy || !queue.some(q => q.status !== 'done');
+  $('clear').disabled = busy;
+  const hasOutputs = queue.some(q => q.outputs.length > 0);
+  $('all').classList.toggle('hidden', !hasOutputs);
+
+  $('queueItems').innerHTML = queue.length ? queue.map((q, i) => `
+    <article class="border rounded-xl p-4 space-y-3">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="min-w-0">
+          <p class="font-semibold text-sm break-all">${escaped(q.file.name)}</p>
+          <p class="text-xs text-slate-500 mt-1">${readable(q.file.size)} ${q.pages ? ' · ' + s('pages') + ': ' + q.pages : ''}</p>
+          <p class="text-xs mt-1 ${q.status === 'error' ? 'text-red-700' : q.status === 'done' ? 'text-emerald-700' : 'text-blue-700'}">
+            ${q.status === 'error' ? s('error') + ': ' + escaped(q.error) : q.status === 'working' ? s('working') + ' ' + (q.progress || '') : s(q.status)}
+          </p>
+        </div>
+        <div>
+          <button ${busy ? 'disabled' : ''} class="border text-xs px-3 py-2 rounded hover:bg-slate-50" data-action="remove" data-i="${i}">${s('cancel')}</button>
+        </div>
+      </div>
+      ${q.outputs.length ? `
+        <div class="border-t pt-3 grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+          ${q.outputs.map((out, oi) => `
+            <div class="bg-slate-50 border rounded-xl p-2.5 flex flex-col justify-between gap-2 text-xs">
+              <button type="button" data-action="preview" data-i="${i}" data-oi="${oi}" class="group relative w-full h-36 bg-white border border-slate-200 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer">
+                <img src="${out.previewUrl}" alt="${escaped(out.name)}" class="max-h-full max-w-full object-contain transition-transform group-hover:scale-105">
+                <span class="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/35 transition-colors flex items-center justify-center">
+                  <span class="opacity-0 group-hover:opacity-100 bg-white text-slate-900 font-medium px-2.5 py-1 rounded shadow text-[11px]">${s('preview')}</span>
+                </span>
+              </button>
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-medium truncate" title="${escaped(out.name)}">${s('pageShort')} ${out.pageNum}: ${readable(out.bytes.byteLength)}</span>
+                <button type="button" class="bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1 rounded shrink-0" data-action="download-single" data-i="${i}" data-oi="${oi}">${s('download')}</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </article>
+  `).join('') : `<p class="text-slate-400">${s('empty')}</p>`;
+}
+
+function openPreview(out) {
+  currentPreview = out;
+  $('previewTitle').textContent = out.name;
+  $('previewMeta').textContent = `${s('pageShort')} ${out.pageNum} · ${readable(out.bytes.byteLength)} · ${out.dpi} DPI`;
+  $('previewImg').src = out.previewUrl;
+  $('previewModal').classList.remove('hidden');
+}
+
+function closePreview() {
+  $('previewModal').classList.add('hidden');
+  currentPreview = null;
+}
+
+$('previewClose').addEventListener('click', closePreview);
+$('previewModal').addEventListener('click', e => { if (e.target === $('previewModal')) closePreview(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('previewModal').classList.contains('hidden')) closePreview(); });
+$('previewDownload').addEventListener('click', () => {
+  if (currentPreview) saveBlob(new Blob([currentPreview.bytes], { type: 'application/pdf' }), currentPreview.name);
+});
+
+$('queueItems').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const i = Number(btn.dataset.i);
+  if (btn.dataset.action === 'remove' && !busy) {
+    revokeOutputs(queue[i]);
+    queue.splice(i, 1);
+    render();
+  }
+  if (btn.dataset.action === 'preview') {
+    openPreview(queue[i].outputs[Number(btn.dataset.oi)]);
+  }
+  if (btn.dataset.action === 'download-single') {
+    const out = queue[i].outputs[Number(btn.dataset.oi)];
+    saveBlob(new Blob([out.bytes], { type: 'application/pdf' }), out.name);
+  }
+});
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$('all').addEventListener('click', async () => {
+  if (busy) return;
+  const zip = new JSZip();
+  for (const q of queue) {
+    for (const out of q.outputs) {
+      zip.file(out.name, out.bytes);
+    }
+  }
+  saveBlob(await zip.generateAsync({ type: 'blob', compression: 'STORE' }), 'BudPdf_Split_Pages.zip');
+});
+
+function makeCanvas(w, h) {
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  return canvas;
+}
+
+function grayPixels(canvas) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const width = canvas.width;
+  for (let y = 0; y < canvas.height; y += 128) {
+    const h = Math.min(128, canvas.height - y);
+    const im = ctx.getImageData(0, y, width, h);
+    const d = im.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const g = Math.round(.299 * d[i] + .587 * d[i + 1] + .114 * d[i + 2]);
+      d[i] = g; d[i + 1] = g; d[i + 2] = g;
+    }
+    ctx.putImageData(im, 0, y);
+  }
+}
+
+function pause() { return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0))); }
+
+async function convertOne(q) {
+  let source;
+  try {
+    source = await pdfjsLib.getDocument({
+      data: new Uint8Array(await q.file.arrayBuffer()),
+      useSystemFonts: true,
+      cMapUrl: PDFJS_ASSETS + 'cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: PDFJS_ASSETS + 'standard_fonts/'
+    }).promise;
+    
+    q.pages = source.numPages;
+    revokeOutputs(q);
+    q.outputs = [];
+
+    const maxSizeBytes = parseInt($('size-select').value) * 1024;
+    const isGrayscale = $('color-select').value === 'grayscale';
+
+    for (let p = 1; p <= q.pages; p++) {
+      q.progress = s('pageProgress')(p, q.pages);
+      render();
+      await pause();
+
+      const page = await source.getPage(p);
+      const size = page.getViewport({ scale: 1 });
+      
+      const dpisToTry = [300, 200, 150, 100];
+      const qualities = [0.9, 0.8, 0.7, 0.6];
+      let pdfBytes = null;
+      let previewBlob = null;
+      let finalDpi = 100;
+
+      for (let dIdx = 0; dIdx < dpisToTry.length; dIdx++) {
+        let currentDpi = dpisToTry[dIdx];
+        const viewport = page.getViewport({ scale: currentDpi / 72 });
+        const w = Math.ceil(viewport.width), h = Math.ceil(viewport.height);
+        const canvas = makeCanvas(w, h);
+        const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
+        
+        await page.render({ canvasContext: ctx, viewport, background: '#ffffff' }).promise;
+        if (isGrayscale) {
+          grayPixels(canvas);
+        }
+
+        let blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', qualities[dIdx] || 0.7));
+        let jpegBuf = new Uint8Array(await blob.arrayBuffer());
+
+        const pdf = new window.jspdf.jsPDF({
+          orientation: size.width > size.height ? 'landscape' : 'portrait',
+          unit: 'pt',
+          format: [size.width, size.height],
+          compress: true
+        });
+        pdf.addImage(jpegBuf, 'JPEG', 0, 0, size.width, size.height, undefined, 'FAST');
+        const arrayBuf = pdf.output('arraybuffer');
+        canvas.width = canvas.height = 0;
+
+        if (arrayBuf.byteLength < maxSizeBytes || dIdx === dpisToTry.length - 1) {
+          pdfBytes = arrayBuf;
+          previewBlob = blob;
+          finalDpi = currentDpi;
+          break;
+        }
+      }
+
+      q.outputs.push({
+        pageNum: p,
+        name: baseName(q.file.name) + `_page_${p}.pdf`,
+        bytes: pdfBytes,
+        previewUrl: URL.createObjectURL(previewBlob),
+        dpi: finalDpi
+      });
+      page.cleanup();
+    }
+    q.status = 'done';
+    q.progress = '';
+  } finally {
+    if (source) await source.destroy();
+  }
+}
+
+$('convert').addEventListener('click', async () => {
+  if (busy) return;
+  busy = true;
+  render();
+  for (const q of queue) {
+    if (q.status === 'done') continue;
+    q.status = 'working'; q.error = ''; q.progress = '';
+    render();
+    try {
+      await convertOne(q);
+    } catch (err) {
+      console.error(err);
+      q.status = 'error';
+      q.error = err?.message || String(err);
+    }
+    render();
+  }
+  busy = false;
+  render();
+});
+
+translate();
+</script>
+</body>
+</html>
